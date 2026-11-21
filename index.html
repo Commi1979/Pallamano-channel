@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Handball Live Studio Pro - Regia Tutto Schermo</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; user-select: none; }
+  html, body { width: 100%; height: 100%; background: #000; color: #f8fafc; overflow: hidden; }
+
+  /* SCHERMATA VIDEO A TUTTO SCHERMO */
+  .fullscreen-stage {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #020617;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  canvas#programCanvas {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  /* BARRA SUPERIORE FLOTTANTE */
+  .hud-top {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    left: 12px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    z-index: 20;
+    pointer-events: none;
+  }
+  .hud-top > * { pointer-events: auto; }
+
+  .hud-btn {
+    background: rgba(15, 23, 42, 0.82);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #fff;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    padding: 9px 13px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.45);
+  }
+  .hud-btn:active { transform: scale(0.96); }
+  .hud-btn.primary { background: rgba(2, 132, 199, 0.9); border-color: #38bdf8; }
+  .hud-btn.success { background: rgba(22, 163, 74, 0.9); border-color: #4ade80; }
+  .hud-btn.danger, .hud-btn.active { background: rgba(220, 38, 38, 0.92); border-color: #f87171; }
+  .hud-btn.warn { background: rgba(202, 138, 4, 0.92); border-color: #facc15; color: #000; }
+
+  /* DOCK INFERIORE SEMPRE ACCESSIBILE (PUNTEGGI, TEMPO, FORMAZIONI, MENU) */
+  .hud-bottom {
+    position: fixed;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    z-index: 20;
+    pointer-events: none;
+  }
+  .hud-bottom > * { pointer-events: auto; }
+
+  .control-cluster {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(15, 23, 42, 0.84);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    padding: 6px 10px;
+    border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.55);
+  }
+
+  .team-tag {
+    font-size: 12px;
+    font-weight: 800;
+    padding: 4px 8px;
+    border-radius: 6px;
+    color: #fff;
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .score-pill {
+    font-size: 20px;
+    font-weight: 900;
+    min-width: 28px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mini-btn {
+    background: #1e293b;
+    color: #fff;
+    border: 1px solid #475569;
+    padding: 7px 11px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .mini-btn:active { transform: scale(0.95); }
+  .mini-btn.gol { background: #16a34a; border-color: #4ade80; }
+  .mini-btn.min2 { background: #eab308; border-color: #fde047; color: #000; }
+
+  /* POPUP RAPIDO SELEZIONE FORMAZIONE ON-DEMAND */
+  .lineup-popover {
+    position: fixed;
+    bottom: 74px;
+    right: 12px;
+    background: rgba(15, 23, 42, 0.96);
+    backdrop-filter: blur(12px);
+    border: 1px solid #38bdf8;
+    border-radius: 12px;
+    padding: 10px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 25;
+    min-width: 230px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.75);
+  }
+  .lineup-popover.open { display: flex; }
+
+  /* DRAWER / MENU IMPOSTAZIONI */
+  .settings-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    z-index: 30;
+    display: none;
+  }
+  .settings-backdrop.open { display: block; }
+
+  .settings-drawer {
+    position: fixed;
+    top: 0;
+    right: -420px;
+    width: 100%;
+    max-width: 400px;
+    height: 100vh;
+    background: #0f172a;
+    border-left: 1px solid #334155;
+    z-index: 35;
+    transition: right 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .settings-drawer.open { right: 0; }
+
+  .drawer-header {
+    padding: 14px 16px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .drawer-header h2 { font-size: 15px; color: #38bdf8; font-weight: 800; }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .section-box {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .section-box h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: #94a3b8;
+  }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input[type="text"], input[type="password"], select {
+    background: #0f172a;
+    color: #fff;
+    border: 1px solid #475569;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    user-select: text;
+  }
+  .player-row {
+    display: grid;
+    grid-template-columns: 44px 1fr auto auto;
+    gap: 6px;
+    align-items: center;
+  }
+  .player-row input { width: 100%; padding: 6px; font-size: 12px; }
+  .badge-2m {
+    background: #eab308;
+    color: #000;
+    font-weight: 800;
+    padding: 3px 7px;
+    border-radius: 6px;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .note { font-size: 11px; color: #94a3b8; line-height: 1.4; }
+</style>
+</head>
+<body>
+
+  <!-- AREA VIDEO A TUTTO SCHERMO -->
+  <div class="fullscreen-stage">
+    <canvas id="programCanvas" width="1280" height="720"></canvas>
+    <video id="camVideo" autoplay muted playsinline style="display:none"></video>
+  </div>
+
+  <!-- BARRA SUPERIORE FLOTTANTE: CAMERA, DIRETTA, REGISTRAZIONE E MENU IMPOSTAZIONI -->
+  <div class="hud-top">
+    <button id="btnCam" class="hud-btn primary" onclick="startSmartphoneCamera()">📷 Camera</button>
+    <button id="btnFlip" class="hud-btn" onclick="flipCamera()" title="Cambia fotocamera">🔄 Gira</button>
+    <button id="btnStream" class="hud-btn danger" onclick="toggleBroadcast()">📡 Diretta YT</button>
+    <button id="btnRec" class="hud-btn success" onclick="toggleRecord()">⏺ Registra</button>
+    <button class="hud-btn" onclick="toggleSettings(true)">☰ Impostazioni</button>
+  </div>
+
+  <!-- POPUP RAPIDO FORMAZIONI ON-DEMAND -->
+  <div id="lineupPopover" class="lineup-popover">
+    <div style="font-size:11px; color:#94a3b8; font-weight:700; text-transform:uppercase;">Sovrapposizione Formazioni</div>
+    <button id="ovHome" class="hud-btn" style="width:100%; justify-content:center;" onclick="setLineupOverlay('home')">Formazione Casa</button>
+    <button id="ovAway" class="hud-btn" style="width:100%; justify-content:center;" onclick="setLineupOverlay('away')">Formazione Ospiti</button>
+    <button id="ovBoth" class="hud-btn" style="width:100%; justify-content:center;" onclick="setLineupOverlay('both')">Confronto Entrambe</button>
+    <button id="ovNone" class="hud-btn active" style="width:100%; justify-content:center;" onclick="setLineupOverlay('none')">Nascondi Grafica</button>
+  </div>
+
+  <!-- BARRA INFERIORE SEMPRE ACCESSIBILE: PUNTEGGI, CRONOMETRO E PULSANTE MOSTRA FORMAZIONI -->
+  <div class="hud-bottom">
+    <!-- Controlli Squadra Casa -->
+    <div class="control-cluster">
+      <span id="hudHomeTag" class="team-tag" style="background:#0284c7;">CASA</span>
+      <button class="mini-btn" onclick="addScore('home', -1)">-1</button>
+      <span id="homeScoreTxt" class="score-pill">0</span>
+      <button class="mini-btn gol" onclick="addScore('home', 1)">+1</button>
+      <button class="mini-btn min2" onclick="addSuspension('home')">2'</button>
+    </div>
+
+    <!-- Cronometro Rapido -->
+    <div class="control-cluster">
+      <button id="btnTimer" class="mini-btn gol" onclick="toggleTimer()">▶ Tempo</button>
+      <span id="hudTimerTxt" style="font-family:monospace; font-size:15px; font-weight:800; padding:0 4px;">00:00</span>
+    </div>
+
+    <!-- Controlli Squadra Ospiti -->
+    <div class="control-cluster">
+      <span id="hudAwayTag" class="team-tag" style="background:#dc2626;">OSPITI</span>
+      <button class="mini-btn" onclick="addScore('away', -1)">-1</button>
+      <span id="awayScoreTxt" class="score-pill">0</span>
+      <button class="mini-btn gol" onclick="addScore('away', 1)">+1</button>
+      <button class="mini-btn min2" onclick="addSuspension('away')">2'</button>
+    </div>
+
+    <!-- Pulsante Mostra Formazioni sempre a portata di mano -->
+    <button id="btnToggleLineupMenu" class="hud-btn primary" onclick="toggleLineupPopover()">📋 Mostra Formazioni</button>
+  </div>
+
+  <!-- MENU LATERALE IMPOSTAZIONI -->
+  <div id="settingsBackdrop" class="settings-backdrop" onclick="toggleSettings(false)"></div>
+  <aside id="settingsDrawer" class="settings-drawer">
+    <div class="drawer-header">
+      <h2>⚙️ Impostazioni Regia</h2>
+      <button class="mini-btn" onclick="toggleSettings(false)">✕ Chiudi</button>
+    </div>
+
+    <div class="drawer-body">
+      <!-- 1. Squadre, Colori e Timeout -->
+      <div class="section-box">
+        <h3>Squadre, Colori & Timeout</h3>
+        <div class="row">
+          <input type="color" id="homeColor" value="#0284c7" onchange="syncTeamUI()" style="width:36px;height:34px;padding:2px;">
+          <input type="text" id="homeName" value="CASA" maxlength="14" oninput="syncTeamUI()" style="flex:1;">
+          <button class="mini-btn" onclick="toggleTimeout('home')">TO (<span id="homeToTxt">3</span>)</button>
+        </div>
+        <div class="row">
+          <input type="color" id="awayColor" value="#dc2626" onchange="syncTeamUI()" style="width:36px;height:34px;padding:2px;">
+          <input type="text" id="awayName" value="OSPITI" maxlength="14" oninput="syncTeamUI()" style="flex:1;">
+          <button class="mini-btn" onclick="toggleTimeout('away')">TO (<span id="awayToTxt">3</span>)</button>
+        </div>
+        <div class="row" style="justify-content:space-between; margin-top:4px;">
+          <select id="halfSelect">
+            <option value="1°T">1° Tempo</option>
+            <option value="2°T">2° Tempo</option>
+            <option value="INT">Intervallo</option>
+          </select>
+          <button class="mini-btn" onclick="resetTimer()">Reset Tempo 00:00</button>
+          <button class="mini-btn" onclick="toggleBrowserFullscreen()">Schermo Intero</button>
+        </div>
+        <div id="suspensionsList" class="row"></div>
+      </div>
+
+      <!-- 2. Gestione Giocatori e Azioni Rapide -->
+      <div class="section-box">
+        <h3>Formazioni & Giocatori (Gol / 2 Minuti)</h3>
+        <div class="row">
+          <button id="tabHome" class="hud-btn primary" style="flex:1; justify-content:center;" onclick="switchRosterTab('home')">Roster Casa</button>
+          <button id="tabAway" class="hud-btn" style="flex:1; justify-content:center;" onclick="switchRosterTab('away')">Roster Ospiti</button>
+        </div>
+        <div id="rosterContainer" style="display:flex; flex-direction:column; gap:6px; margin-top:4px;"></div>
+      </div>
+
+      <!-- 3. Impostazioni Diretta YouTube -->
+      <div class="section-box">
+        <h3>Diretta YouTube (Stream Key & Ponte)</h3>
+        <input type="password" id="ytKey" placeholder="Chiave stream YouTube (es. abcd-1234-...)">
+        <input type="text" id="relayUrl" value="ws://localhost:3000" placeholder="URL Ponte RTMP (es. ws://localhost:3000)">
+        <p class="note">
+          Inserisci la <strong>Chiave stream</strong> di YouTube Studio. Con il ponte locale attivo (<code>node relay.js</code>) o su server HTTPS/WSS, il tasto <strong>Diretta YT</strong> invia lo stream in tempo reale al tuo canale.
+        </p>
+      </div>
+    </div>
+  </aside>
+
+<script>
+  const canvas = document.getElementById('programCanvas');
+  const ctx = canvas.getContext('2d');
+  const video = document.getElementById('camVideo');
+
+  const state = {
+    facingMode: 'environment',
+    cameraReady: false,
+    isLive: false,
+    relayConnected: false,
+    isRecording: false,
+    timerRunning: false,
+    seconds: 0,
+    homeScore: 0,
+    awayScore: 0,
+    homeTimeouts: 3,
+    awayTimeouts: 3,
+    lineupOverlay: 'none',
+    activeRosterTab: 'home',
+    suspensions: [],
+    lowerThird: null,
+    rosters: {
+      home: [
+        { num: '1', name: 'Rossi M. (POR)', goals: 0 },
+        { num: '4', name: 'Bianchi L.', goals: 0 },
+        { num: '7', name: 'Verdi A.', goals: 0 },
+        { num: '9', name: 'Neri F.', goals: 0 },
+        { num: '11', name: 'Gialli S.', goals: 0 },
+        { num: '15', name: 'Costa D.', goals: 0 },
+        { num: '22', name: 'Rinaldi P.', goals: 0 }
+      ],
+      away: [
+        { num: '12', name: 'Galli T. (POR)', goals: 0 },
+        { num: '3', name: 'Moretti G.', goals: 0 },
+        { num: '8', name: 'Conti E.', goals: 0 },
+        { num: '10', name: 'Mancini R.', goals: 0 },
+        { num: '14', name: 'Lombardi C.', goals: 0 },
+        { num: '19', name: 'Barbieri V.', goals: 0 },
+        { num: '24', name: 'Fontana M.', goals: 0 }
+      ]
+    }
+  };
+
+  let currentStream = null;
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let wsSocket = null;
+  let liveStreamer = null;
+
+  function toggleSettings(open) {
+    document.getElementById('settingsDrawer').classList.toggle('open', open);
+    document.getElementById('settingsBackdrop').classList.toggle('open', open);
+    if (open) document.getElementById('lineupPopover').classList.remove('open');
+  }
+
+  function toggleLineupPopover() {
+    document.getElementById('lineupPopover').classList.toggle('open');
+  }
+
+  function toggleBrowserFullscreen() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+
+  function syncTeamUI() {
+    const hName = document.getElementById('homeName').value || 'CASA';
+    const aName = document.getElementById('awayName').value || 'OSPITI';
+    const hCol = document.getElementById('homeColor').value;
+    const aCol = document.getElementById('awayColor').value;
+
+    const hTag = document.getElementById('hudHomeTag');
+    const aTag = document.getElementById('hudAwayTag');
+    hTag.textContent = hName;
+    hTag.style.background = hCol;
+    aTag.textContent = aName;
+    aTag.style.background = aCol;
+  }
+
+  async function startSmartphoneCamera() {
+    try {
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+      }
+      currentStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: state.facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: true
+      });
+      video.srcObject = currentStream;
+      await video.play();
+      state.cameraReady = true;
+      const btn = document.getElementById('btnCam');
+      btn.textContent = '📷 Attiva';
+      btn.className = 'hud-btn success';
+    } catch (err) {
+      alert('Impossibile avviare la fotocamera: ' + err.message + '\nAssicurati di aprire la pagina in HTTPS o localhost e di concedere i permessi.');
+    }
+  }
+
+  async function flipCamera() {
+    state.facingMode = state.facingMode === 'environment' ? 'user' : 'environment';
+    if (state.cameraReady) {
+      await startSmartphoneCamera();
+    }
+  }
+
+  function getCombinedStream() {
+    const canvasStream = canvas.captureStream(30);
+    if (currentStream && currentStream.getAudioTracks().length > 0) {
+      currentStream.getAudioTracks().forEach(track => canvasStream.addTrack(track));
+    }
+    return canvasStream;
+  }
+
+  async function toggleBroadcast() {
+    if (!state.cameraReady) {
+      await startSmartphoneCamera();
+    }
+    const btn = document.getElementById('btnStream');
+    if (!state.isLive) {
+      state.isLive = true;
+      btn.textContent = '● IN DIRETTA';
+      btn.classList.add('active');
+
+      const ytKey = document.getElementById('ytKey').value.trim();
+      const relayUrl = document.getElementById('relayUrl').value.trim();
+      if (ytKey && relayUrl) {
+        try {
+          wsSocket = new WebSocket(relayUrl + '?key=' + encodeURIComponent(ytKey));
+          wsSocket.onopen = () => {
+            state.relayConnected = true;
+            const stream = getCombinedStream();
+            liveStreamer = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus', videoBitsPerSecond: 2500000 });
+            liveStreamer.ondataavailable = e => {
+              if (e.data && e.data.size > 0 && wsSocket.readyState === WebSocket.OPEN) {
+                wsSocket.send(e.data);
+              }
+            };
+            liveStreamer.start(250);
+          };
+          wsSocket.onerror = () => { state.relayConnected = false; };
+          wsSocket.onclose = () => { state.relayConnected = false; };
+        } catch (e) {
+          state.relayConnected = false;
+        }
+      }
+    } else {
+      state.isLive = false;
+      state.relayConnected = false;
+      if (liveStreamer && liveStreamer.state !== 'inactive') liveStreamer.stop();
+      if (wsSocket) wsSocket.close();
+      btn.textContent = '📡 Diretta YT';
+      btn.classList.remove('active');
+    }
+  }
+
+  function toggleRecord() {
+    const btn = document.getElementById('btnRec');
+    if (!state.isRecording) {
+      try {
+        const stream = getCombinedStream();
+        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+          ? 'video/webm;codecs=vp9,opus'
+          : (MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : '');
+        mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+        recordedChunks = [];
+        mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'partita-pallamano.webm';
+          a.click();
+        };
+        mediaRecorder.start();
+        state.isRecording = true;
+        btn.textContent = '⏹ Stop';
+        btn.className = 'hud-btn danger';
+      } catch (err) {
+        alert('Registrazione non supportata: ' + err.message);
+      }
+    } else {
+      mediaRecorder.stop();
+      state.isRecording = false;
+      btn.textContent = '⏺ Registra';
+      btn.className = 'hud-btn success';
+    }
+  }
+
+  setInterval(() => {
+    if (state.timerRunning) {
+      state.seconds++;
+      state.suspensions.forEach(s => s.remaining--);
+      state.suspensions = state.suspensions.filter(s => s.remaining > 0);
+      renderSuspensionsUI();
+    }
+    const m = String(Math.floor(state.seconds / 60)).padStart(2, '0');
+    const s = String(state.seconds % 60).padStart(2, '0');
+    document.getElementById('hudTimerTxt').textContent = `${m}:${s}`;
+  }, 1000);
+
+  function toggleTimer() {
+    state.timerRunning = !state.timerRunning;
+    const btn = document.getElementById('btnTimer');
+    btn.textContent = state.timerRunning ? '⏸ Pausa' : '▶ Tempo';
+    btn.className = state.timerRunning ? 'mini-btn min2' : 'mini-btn gol';
+  }
+
+  function resetTimer() {
+    state.timerRunning = false;
+    state.seconds = 0;
+    const btn = document.getElementById('btnTimer');
+    btn.textContent = '▶ Tempo';
+    btn.className = 'mini-btn gol';
+  }
+
+  function addScore(team, delta) {
+    if (team === 'home') {
+      state.homeScore = Math.max(0, state.homeScore + delta);
+      document.getElementById('homeScoreTxt').textContent = state.homeScore;
+    } else {
+      state.awayScore = Math.max(0, state.awayScore + delta);
+      document.getElementById('awayScoreTxt').textContent = state.awayScore;
+    }
+  }
+
+  function toggleTimeout(team) {
+    const name = document.getElementById(team + 'Name').value;
+    const color = document.getElementById(team + 'Color').value;
+    if (team === 'home') {
+      state.homeTimeouts = state.homeTimeouts > 0 ? state.homeTimeouts - 1 : 3;
+      document.getElementById('homeToTxt').textContent = state.homeTimeouts;
+    } else {
+      state.awayTimeouts = state.awayTimeouts > 0 ? state.awayTimeouts - 1 : 3;
+      document.getElementById('awayToTxt').textContent = state.awayTimeouts;
+    }
+    showLowerThird('TIMEOUT ' + name, 'Richiesto dalla panchina', color);
+  }
+
+  function addSuspension(team, playerLabel = '') {
+    state.suspensions.push({ team, remaining: 120, player: playerLabel });
+    renderSuspensionsUI();
+  }
+
+  function renderSuspensionsUI() {
+    const el = document.getElementById('suspensionsList');
+    el.innerHTML = state.suspensions.map((s, idx) => {
+      const m = Math.floor(s.remaining / 60);
+      const sec = String(s.remaining % 60).padStart(2, '0');
+      const tName = s.team === 'home' ? document.getElementById('homeName').value : document.getElementById('awayName').value;
+      return `<span class="badge-2m" onclick="state.suspensions.splice(${idx},1);renderSuspensionsUI()">${tName} ${s.player} ${m}:${sec} ✕</span>`;
+    }).join('');
+  }
+
+  function setLineupOverlay(mode) {
+    state.lineupOverlay = mode;
+    ['ovHome', 'ovAway', 'ovBoth', 'ovNone'].forEach(id => document.getElementById(id).classList.remove('active'));
+    const map = { home: 'ovHome', away: 'ovAway', both: 'ovBoth', none: 'ovNone' };
+    document.getElementById(map[mode]).classList.add('active');
+
+    const mainBtn = document.getElementById('btnToggleLineupMenu');
+    if (mode === 'none') {
+      mainBtn.textContent = '📋 Mostra Formazioni';
+      mainBtn.className = 'hud-btn primary';
+    } else {
+      mainBtn.textContent = '📋 Formazioni ON AIR';
+      mainBtn.className = 'hud-btn danger active';
+    }
+    document.getElementById('lineupPopover').classList.remove('open');
+  }
+
+  function showLowerThird(title, subtitle, color) {
+    state.lowerThird = { title, subtitle, color, expires: Date.now() + 5000 };
+  }
+
+  function switchRosterTab(team) {
+    state.activeRosterTab = team;
+    document.getElementById('tabHome').className = team === 'home' ? 'hud-btn primary' : 'hud-btn';
+    document.getElementById('tabAway').className = team === 'away' ? 'hud-btn primary' : 'hud-btn';
+    renderRoster();
+  }
+
+  function renderRoster() {
+    const team = state.activeRosterTab;
+    const container = document.getElementById('rosterContainer');
+    container.innerHTML = state.rosters[team].map((p, i) => `
+      <div class="player-row">
+        <input type="text" value="${p.num}" onchange="state.rosters['${team}'][${i}].num = this.value">
+        <input type="text" value="${p.name}" onchange="state.rosters['${team}'][${i}].name = this.value">
+        <button class="mini-btn gol" onclick="playerGoal('${team}', ${i})">+1 (${p.goals})</button>
+        <button class="mini-btn min2" onclick="playerTwoMin('${team}', ${i})">2'</button>
+      </div>
+    `).join('');
+  }
+
+  function playerGoal(team, idx) {
+    const p = state.rosters[team][idx];
+    p.goals++;
+    addScore(team, 1);
+    const color = document.getElementById(team + 'Color').value;
+    const teamName = document.getElementById(team + 'Name').value;
+    showLowerThird(`GOL! #${p.num} ${p.name}`, `${teamName} • Gol nella partita: ${p.goals}`, color);
+    renderRoster();
+  }
+
+  function playerTwoMin(team, idx) {
+    const p = state.rosters[team][idx];
+    addSuspension(team, `#${p.num}`);
+    const teamName = document.getElementById(team + 'Name').value;
+    showLowerThird('ESCLUSIONE 2 MINUTI', `#${p.num} ${p.name} (${teamName})`, '#eab308');
+  }
+
+  function drawFallbackCourt() {
+    ctx.fillStyle = '#090d16';
+    ctx.fillRect(0, 0, 1280, 720);
+    ctx.fillStyle = '#0369a1';
+    ctx.fillRect(90, 75, 1100, 570);
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(90, 75, 1100, 570);
+    ctx.beginPath(); ctx.moveTo(640, 75); ctx.lineTo(640, 645); ctx.stroke();
+    ctx.beginPath(); ctx.arc(90, 360, 160, -Math.PI/2, Math.PI/2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(1190, 360, 160, Math.PI/2, -Math.PI/2); ctx.stroke();
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.fillText('Tocca "📷 Camera" in alto per avviare la videocamera a tutto schermo', 260, 365);
+  }
+
+  function drawScorebug() {
+    const homeName = document.getElementById('homeName').value;
+    const awayName = document.getElementById('awayName').value;
+    const homeColor = document.getElementById('homeColor').value;
+    const awayColor = document.getElementById('awayColor').value;
+    const half = document.getElementById('halfSelect').value;
+    const mins = String(Math.floor(state.seconds / 60)).padStart(2, '0');
+    const secs = String(state.seconds % 60).padStart(2, '0');
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.fillRect(36, 24, 540, 54);
+
+    ctx.fillStyle = homeColor;
+    ctx.fillRect(36, 24, 12, 54);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillText(homeName, 58, 58);
+    ctx.font = '900 26px sans-serif';
+    ctx.fillText(state.homeScore, 212, 60);
+
+    ctx.fillStyle = awayColor;
+    ctx.fillRect(262, 24, 12, 54);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillText(awayName, 284, 58);
+    ctx.font = '900 26px sans-serif';
+    ctx.fillText(state.awayScore, 438, 60);
+
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(482, 24, 94, 54);
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText(half, 514, 42);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 20px monospace';
+    ctx.fillText(`${mins}:${secs}`, 498, 66);
+
+    state.suspensions.forEach((s, i) => {
+      const m = Math.floor(s.remaining / 60);
+      const sc = String(s.remaining % 60).padStart(2, '0');
+      const x = s.team === 'home' ? 36 : 262;
+      ctx.fillStyle = '#eab308';
+      ctx.fillRect(x, 82 + i * 26, 150, 22);
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillText(`2' ${s.player} (${m}:${sc})`, x + 8, 97 + i * 26);
+    });
+  }
+
+  function drawLineupCard(team, x, y, width) {
+    const name = document.getElementById(team + 'Name').value;
+    const color = document.getElementById(team + 'Color').value;
+    const list = state.rosters[team];
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.94)';
+    ctx.fillRect(x, y, width, 430);
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, width, 52);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillText(`FORMAZIONE ${name}`, x + 18, y + 34);
+
+    list.forEach((p, idx) => {
+      const rowY = y + 90 + idx * 46;
+      ctx.fillStyle = idx % 2 === 0 ? 'rgba(255,255,255,0.05)' : 'transparent';
+      ctx.fillRect(x + 12, rowY - 26, width - 24, 38);
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 19px monospace';
+      ctx.fillText(`#${p.num}`, x + 22, rowY);
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 19px sans-serif';
+      ctx.fillText(p.name, x + 80, rowY);
+      if (p.goals > 0) {
+        ctx.fillStyle = '#4ade80';
+        ctx.font = 'bold 16px sans-serif';
+        ctx.fillText(`${p.goals} GOL`, x + width - 88, rowY);
+      }
+    });
+  }
+
+  function renderLoop() {
+    ctx.clearRect(0, 0, 1280, 720);
+    if (state.cameraReady && video.readyState >= 2) {
+      ctx.drawImage(video, 0, 0, 1280, 720);
+    } else {
+      drawFallbackCourt();
+    }
+
+    drawScorebug();
+
+    if (state.isLive) {
+      ctx.fillStyle = '#dc2626';
+      ctx.fillRect(600, 24, 108, 36);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 17px sans-serif';
+      ctx.fillText('● LIVE', 616, 48);
+    }
+
+    if (state.lineupOverlay === 'home') {
+      drawLineupCard('home', 390, 130, 500);
+    } else if (state.lineupOverlay === 'away') {
+      drawLineupCard('away', 390, 130, 500);
+    } else if (state.lineupOverlay === 'both') {
+      drawLineupCard('home', 105, 130, 500);
+      drawLineupCard('away', 675, 130, 500);
+    }
+
+    if (state.lowerThird && Date.now() < state.lowerThird.expires) {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+      ctx.fillRect(36, 540, 580, 82);
+      ctx.fillStyle = state.lowerThird.color;
+      ctx.fillRect(36, 540, 14, 82);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.fillText(state.lowerThird.title, 64, 575);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '17px sans-serif';
+      ctx.fillText(state.lowerThird.subtitle, 64, 604);
+    }
+
+    requestAnimationFrame(renderLoop);
+  }
+
+  syncTeamUI();
+  renderRoster();
+  renderLoop();
+</script>
+</body>
+</html>
